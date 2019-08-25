@@ -1,0 +1,215 @@
+
+# 460ms user time, 20ms system time, 24.66M rss, 180.30M vsz
+# Current date: Sun Aug 25 19:35:55 2019
+# Hostname: isucon81
+# Files: mariadb-slow6.log
+# Overall: 2.60k total, 78 unique, 0.00 QPS, 0.00x concurrency ___________
+# Time range: 2019-08-18 14:52:14 to 2019-08-25 11:54:10
+# Attribute          total     min     max     avg     95%  stddev  median
+# ============     ======= ======= ======= ======= ======= ======= =======
+# Exec time            89s     1us      4s    34ms    61ms   210ms     2ms
+# Lock time           95ms       0     1ms    36us    80us    73us    20us
+# Rows sent          3.08M       0 187.34k   1.22k  964.41   9.46k  964.41
+# Rows examine      31.45M       0 749.39k  12.40k 182.98k  53.44k   1.86k
+# Query size       125.75k       6   1.11k   49.58  124.25   40.16   40.45
+
+# Profile
+# Rank Query ID                       Response time Calls R/Call V/M   Ite
+# ==== ============================== ============= ===== ====== ===== ===
+#    1 0xCF359B3ADAA7C975ADEB99AEF... 21.9322 24.5%    37 0.5928  0.43 SELECT reservations
+#    2 0xFA4A7D058590E7817CAB74A57... 20.5889 23.0%    37 0.5565  0.38 SELECT reservations sheets events
+#    3 0x4D389B62F801B1B5A5A259F6E... 20.0889 22.5%     7 2.8698  0.05 SELECT reservations sheets events
+#    4 0xA61620E4C90DC1B629078E253... 13.9687 15.6%    11 1.2699  0.02 SELECT reservations
+#    5 0x56262B2F9FFB752D537C55B1B...  6.9800  7.8%    37 0.1886  0.23 SELECT reservations sheets
+#    6 0x1CB60848B88F6794C78B5A664...  4.1420  4.6%  1837 0.0023  0.00 SELECT sheets
+# MISC 0xMISC                          1.7427  1.9%   631 0.0028   0.0 <72 ITEMS>
+
+# Query 1: 0.00 QPS, 0.00x concurrency, ID 0xCF359B3ADAA7C975ADEB99AEFA41351A at byte 124807
+# Scores: V/M = 0.43
+# Time range: 2019-08-18 14:54:06 to 2019-08-24 09:45:50
+# Attribute    pct   total     min     max     avg     95%  stddev  median
+# ============ === ======= ======= ======= ======= ======= ======= =======
+# Count          1      37
+# Exec time     24     22s   221ms      2s   593ms      1s   503ms   339ms
+# Lock time      1     2ms     6us   377us    42us    89us    60us    18us
+# Rows sent      0     185       5       5       5       5       0       5
+# Rows examine  21   6.77M 187.33k 187.36k 187.34k 182.98k       0 182.98k
+# Query size     3   4.64k     128     129  128.38  124.25       0  124.25
+# String:
+# Databases    torb
+# Hosts        localhost
+# Users        isucon
+# Query_time distribution
+#   1us
+#  10us
+# 100us
+#   1ms
+#  10ms
+# 100ms  ################################################################
+#    1s  ############
+#  10s+
+# Tables
+#    SHOW TABLE STATUS FROM `torb` LIKE 'reservations'\G
+#    SHOW CREATE TABLE `torb`.`reservations`\G
+# EXPLAIN /*!50100 PARTITIONS*/
+SELECT  event_id FROM reservations WHERE user_id =  GROUP BY event_id ORDER BY MAX(IFNULL(canceled_at, reserved_at)) DESC LIMIT 5\G
+
+# Query 2: 0.00 QPS, 0.00x concurrency, ID 0xFA4A7D058590E7817CAB74A5762D68F4 at byte 94682
+# Scores: V/M = 0.38
+# Time range: 2019-08-18 14:54:06 to 2019-08-24 09:45:50
+# Attribute    pct   total     min     max     avg     95%  stddev  median
+# ============ === ======= ======= ======= ======= ======= ======= =======
+# Count          1      37
+# Exec time     23     21s   230ms      2s   556ms      2s   460ms   308ms
+# Lock time      1     2ms    11us   223us    40us    76us    38us    20us
+# Rows sent      0      37       1       1       1       1       0       1
+# Rows examine  21   6.77M 187.33k 187.36k 187.35k 182.98k       0 182.98k
+# Query size     5   6.77k     187     188  187.38  183.58       0  183.58
+# String:
+# Databases    torb
+# Hosts        localhost
+# Users        isucon
+# Query_time distribution
+#   1us
+#  10us
+# 100us
+#   1ms
+#  10ms
+# 100ms  ################################################################
+#    1s  ############
+#  10s+
+# Tables
+#    SHOW TABLE STATUS FROM `torb` LIKE 'reservations'\G
+#    SHOW CREATE TABLE `torb`.`reservations`\G
+#    SHOW TABLE STATUS FROM `torb` LIKE 'sheets'\G
+#    SHOW CREATE TABLE `torb`.`sheets`\G
+#    SHOW TABLE STATUS FROM `torb` LIKE 'events'\G
+#    SHOW CREATE TABLE `torb`.`events`\G
+# EXPLAIN /*!50100 PARTITIONS*/
+SELECT  IFNULL(SUM(e.price + s.price), 0) FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id INNER JOIN events e ON e.id = r.event_id WHERE r.user_id =  AND r.canceled_at IS NULL\G
+
+# Query 3: 0.00 QPS, 0.00x concurrency, ID 0x4D389B62F801B1B5A5A259F6E743725C at byte 297893
+# Scores: V/M = 0.05
+# Time range: 2019-08-18 14:54:49 to 2019-08-24 09:45:53
+# Attribute    pct   total     min     max     avg     95%  stddev  median
+# ============ === ======= ======= ======= ======= ======= ======= =======
+# Count          0       7
+# Exec time     22     20s      2s      4s      3s      4s   389ms      3s
+# Lock time      0   456us    47us    89us    65us    84us    14us    57us
+# Rows sent     41   1.28M 187.33k 187.34k 187.33k 182.98k       0 182.98k
+# Rows examine  16   5.12M 749.32k 749.39k 749.35k 717.31k    0.01 717.31k
+# Query size     1   1.75k     256     257  256.43  246.02    0.00  246.02
+# String:
+# Databases    torb
+# Hosts        localhost
+# Users        isucon
+# Query_time distribution
+#   1us
+#  10us
+# 100us
+#   1ms
+#  10ms
+# 100ms
+#    1s  ################################################################
+#  10s+
+# Tables
+#    SHOW TABLE STATUS FROM `torb` LIKE 'reservations'\G
+#    SHOW CREATE TABLE `torb`.`reservations`\G
+#    SHOW TABLE STATUS FROM `torb` LIKE 'sheets'\G
+#    SHOW CREATE TABLE `torb`.`sheets`\G
+#    SHOW TABLE STATUS FROM `torb` LIKE 'events'\G
+#    SHOW CREATE TABLE `torb`.`events`\G
+# EXPLAIN /*!50100 PARTITIONS*/
+SELECT  r.*, s.rank AS sheet_rank, s.num AS sheet_num, s.price AS sheet_price, e.id AS event_id, e.price AS event_price FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id INNER JOIN events e ON e.id = r.event_id ORDER BY reserved_at ASC FOR UPDATE\G
+
+# Query 4: 0.00 QPS, 0.00x concurrency, ID 0xA61620E4C90DC1B629078E2533F908AC at byte 100891
+# Scores: V/M = 0.02
+# Time range: 2019-08-18 14:54:12 to 2019-08-23 20:37:40
+# Attribute    pct   total     min     max     avg     95%  stddev  median
+# ============ === ======= ======= ======= ======= ======= ======= =======
+# Count          0      11
+# Exec time     15     14s      1s      2s      1s      1s   153ms      1s
+# Lock time      0   283us    22us    32us    25us    30us     3us    23us
+# Rows sent      0       9       0       1    0.82    0.99    0.38    0.99
+# Rows examine   0     130       0      19   11.82   15.25    5.69   13.83
+# Query size     1   1.62k     151     151     151     151       0     151
+# String:
+# Databases    torb
+# Hosts        localhost
+# Users        isucon
+# Query_time distribution
+#   1us
+#  10us
+# 100us
+#   1ms
+#  10ms
+# 100ms
+#    1s  ################################################################
+#  10s+
+# Tables
+#    SHOW TABLE STATUS FROM `torb` LIKE 'reservations'\G
+#    SHOW CREATE TABLE `torb`.`reservations`\G
+# EXPLAIN /*!50100 PARTITIONS*/
+SELECT  * FROM reservations WHERE event_id =  AND sheet_id =  AND canceled_at IS NULL GROUP BY event_id, sheet_id HAVING reserved_at = MIN(reserved_at)\G
+
+# Query 5: 0.00 QPS, 0.00x concurrency, ID 0x56262B2F9FFB752D537C55B1B59AE177 at byte 265825
+# Scores: V/M = 0.23
+# Time range: 2019-08-18 14:54:04 to 2019-08-24 09:45:45
+# Attribute    pct   total     min     max     avg     95%  stddev  median
+# ============ === ======= ======= ======= ======= ======= ======= =======
+# Count          1      37
+# Exec time      7      7s    59ms      1s   189ms   580ms   206ms   100ms
+# Lock time      1     1ms     8us   325us    37us    73us    51us    15us
+# Rows sent      0     185       5       5       5       5       0       5
+# Rows examine  21   6.77M 187.32k 187.35k 187.33k 182.98k       0 182.98k
+# Query size     5   6.92k     191     192  191.38  183.58       0  183.58
+# String:
+# Databases    torb
+# Hosts        localhost
+# Users        isucon
+# Query_time distribution
+#   1us
+#  10us
+# 100us
+#   1ms
+#  10ms  #########################################################
+# 100ms  ################################################################
+#    1s  ###
+#  10s+
+# Tables
+#    SHOW TABLE STATUS FROM `torb` LIKE 'reservations'\G
+#    SHOW CREATE TABLE `torb`.`reservations`\G
+#    SHOW TABLE STATUS FROM `torb` LIKE 'sheets'\G
+#    SHOW CREATE TABLE `torb`.`sheets`\G
+# EXPLAIN /*!50100 PARTITIONS*/
+SELECT  r.*, s.rank AS sheet_rank, s.num AS sheet_num FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id WHERE r.user_id =  ORDER BY IFNULL(r.canceled_at, r.reserved_at) DESC LIMIT 5\G
+
+# Query 6: 0.00 QPS, 0.00x concurrency, ID 0x1CB60848B88F6794C78B5A664AB740E6 at byte 68168
+# Scores: V/M = 0.00
+# Time range: 2019-08-18 14:53:43 to 2019-08-25 11:54:10
+# Attribute    pct   total     min     max     avg     95%  stddev  median
+# ============ === ======= ======= ======= ======= ======= ======= =======
+# Count         70    1837
+# Exec time      4      4s     2ms    62ms     2ms     3ms     1ms     2ms
+# Lock time     48    46ms    11us     1ms    24us    36us    53us    19us
+# Rows sent     56   1.75M    1000    1000    1000    1000       0    1000
+# Rows examine  11   3.50M   1.95k   1.95k   1.95k   1.95k       0   1.95k
+# Query size    59  74.22k      41      42   41.37   40.45       0   40.45
+# String:
+# Databases    torb
+# Hosts        localhost
+# Users        isucon
+# Query_time distribution
+#   1us
+#  10us
+# 100us
+#   1ms  ################################################################
+#  10ms  #
+# 100ms
+#    1s
+#  10s+
+# Tables
+#    SHOW TABLE STATUS FROM `torb` LIKE 'sheets'\G
+#    SHOW CREATE TABLE `torb`.`sheets`\G
+# EXPLAIN /*!50100 PARTITIONS*/
+SELECT  * FROM sheets ORDER BY `rank`, num\G
