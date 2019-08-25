@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS reservations (
     KEY evet_id_user_id_canceled_at_idx (event_id, user_id, canceled_at),
     KEY event_id_idx (event_id),
     KEY sheet_id_idx (sheet_id),
+    KEY sheet_id_user_id_idx (sheet_id, user_id),
     KEY user_id_idx (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
