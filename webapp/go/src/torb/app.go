@@ -271,14 +271,12 @@ func getEvent(eventID, loginUserID int64) (*Event, error) {
 func getEvents_without_detail(all bool, sheets_map map[string]*Sheets) ([]*Event, error) {
 	tx, err := db.Begin()
 	if err != nil {
-		log.Println("getEvents_without_detail error")
 		return nil, err
 	}
 	defer tx.Commit()
 
 	rows, err := tx.Query("SELECT * FROM events ORDER BY id ASC")
 	if err != nil {
-		log.Println("getEvents_without_detail error2")
 		return nil, err
 	}
 	defer rows.Close()
@@ -287,7 +285,6 @@ func getEvents_without_detail(all bool, sheets_map map[string]*Sheets) ([]*Event
 	for rows.Next() {
 		var event Event
 		if err := rows.Scan(&event.ID, &event.Title, &event.PublicFg, &event.ClosedFg, &event.Price); err != nil {
-		log.Println("getEvents_without_detail error3")
 			return nil, err
 		}
 		if !all && !event.PublicFg {
@@ -299,7 +296,6 @@ func getEvents_without_detail(all bool, sheets_map map[string]*Sheets) ([]*Event
 	for i, v := range events {
 		event, err := getEvent_without_detail(v, -1, sheets_map)
 		if err != nil {
-		log.Println("getEvents_without_detail error4")
 			return nil, err
 		}
 		events[i] = event
@@ -313,25 +309,18 @@ func getEvent_without_detail(event *Event, loginUserID int64, sheets_map map[str
 		"B": &Sheets{Total: sheets_map["B"].Total},
 		"C": &Sheets{Total: sheets_map["C"].Total},
 	}
-	log.Println("Total: ", event.Sheets["S"].Total)
 
 	err := db.QueryRow("select count(*) from reservations where event_id = ? and canceled_at is null", event.ID).Scan(&event.Remains)
 	event.Remains = event.Total - event.Remains
-	log.Println("event.remains", event.Remains)
 	if err != nil {
-		log.Println("getEvent_without_detail error3")
 		return nil, err }
 
 	for k, _ := range event.Sheets {
-		log.Println(event.Price, event.ID, k)
 		err := db.QueryRow("select count(*) as remains, ? + s.price as price from reservations r join sheets s on r.sheet_id = s.id where r.event_id = ? and s.`rank` = ? and canceled_at is null", event.Price, event.ID, k).Scan(&event.Sheets[k].Remains, &event.Sheets[k].Price)
 		event.Sheets[k].Remains = event.Sheets[k].Total - event.Sheets[k].Remains
-		log.Println(event.Sheets[k].Total, event.Sheets[k].Remains)
 		if err != nil {
 			event.Sheets[k].Price = event.Price + sheets_map[k].Price
 			event.Sheets[k].Remains = event.Sheets[k].Total
-			log.Println(event.Sheets[k].Price, event.Sheets[k].Remains)
-			log.Println("getEvent_without_detail error")
 		}
 	}
 	return event, nil
@@ -442,7 +431,7 @@ func main() {
 	e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{Output: os.Stderr}))
 	e.Static("/", "public")
 	e.GET("/", func(c echo.Context) error {
-		events, err := getEvents(false)
+		events, err := getEvents_without_detail(false, sheets_map)
 		if err != nil {
 			return err
 		}
@@ -631,7 +620,7 @@ func main() {
 		return c.NoContent(204)
 	}, loginRequired)
 	e.GET("/api/events", func(c echo.Context) error {
-		events, err := getEvents(true)
+		events, err := getEvents_without_detail(true, sheets_map)
 		if err != nil {
 			return err
 		}
@@ -846,7 +835,7 @@ func main() {
 		return c.NoContent(204)
 	}, adminLoginRequired)
 	e.GET("/admin/api/events", func(c echo.Context) error {
-		events, err := getEvents(true)
+		events, err := getEvents_without_detail(true, sheets_map)
 		if err != nil {
 			return err
 		}
