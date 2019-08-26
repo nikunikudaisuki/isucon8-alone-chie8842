@@ -329,7 +329,7 @@ func getEvent_without_detail(event *Event, loginUserID int64, sheets_map map[str
 		log.Println(event.Sheets[k].Total, event.Sheets[k].Remains)
 		if err != nil {
 			event.Sheets[k].Price = event.Price + sheets_map[k].Price
-			event.Sheets[k].Remains = 0
+			event.Sheets[k].Remains = event.Sheets[k].Total
 			log.Println(event.Sheets[k].Price, event.Sheets[k].Remains)
 			log.Println("getEvent_without_detail error")
 		}
