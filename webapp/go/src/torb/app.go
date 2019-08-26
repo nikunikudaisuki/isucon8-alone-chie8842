@@ -221,6 +221,7 @@ func getEvents(all bool) ([]*Event, error) {
 	return events, nil
 }
 
+
 func getEvent(eventID, loginUserID int64) (*Event, error) {
 	var event Event
 	if err := db.QueryRow("SELECT * FROM events WHERE id = ?", eventID).Scan(&event.ID, &event.Title, &event.PublicFg, &event.ClosedFg, &event.Price); err != nil {
@@ -267,6 +268,75 @@ func getEvent(eventID, loginUserID int64) (*Event, error) {
 	return &event, nil
 }
 
+func getEvents_without_detail(all bool, sheets_map map[string]*Sheets) ([]*Event, error) {
+	tx, err := db.Begin()
+	if err != nil {
+		log.Println("getEvents_without_detail error")
+		return nil, err
+	}
+	defer tx.Commit()
+
+	rows, err := tx.Query("SELECT * FROM events ORDER BY id ASC")
+	if err != nil {
+		log.Println("getEvents_without_detail error2")
+		return nil, err
+	}
+	defer rows.Close()
+
+	var events []*Event
+	for rows.Next() {
+		var event Event
+		if err := rows.Scan(&event.ID, &event.Title, &event.PublicFg, &event.ClosedFg, &event.Price); err != nil {
+		log.Println("getEvents_without_detail error3")
+			return nil, err
+		}
+		if !all && !event.PublicFg {
+			continue
+		}
+		event.Total = sheets_map["ALL"].Total
+		events = append(events, &event)
+	}
+	for i, v := range events {
+		event, err := getEvent_without_detail(v, -1, sheets_map)
+		if err != nil {
+		log.Println("getEvents_without_detail error4")
+			return nil, err
+		}
+		events[i] = event
+	}
+	return events, nil
+}
+func getEvent_without_detail(event *Event, loginUserID int64, sheets_map map[string]*Sheets) (*Event, error) {
+	event.Sheets = map[string]*Sheets{
+		"S": &Sheets{Total: sheets_map["S"].Total},
+		"A": &Sheets{Total: sheets_map["A"].Total},
+		"B": &Sheets{Total: sheets_map["B"].Total},
+		"C": &Sheets{Total: sheets_map["C"].Total},
+	}
+	log.Println("Total: ", event.Sheets["S"].Total)
+
+	err := db.QueryRow("select count(*) from reservations where event_id = ? and canceled_at is null", event.ID).Scan(&event.Remains)
+	event.Remains = event.Total - event.Remains
+	log.Println("event.remains", event.Remains)
+	if err != nil {
+		log.Println("getEvent_without_detail error3")
+		return nil, err }
+
+	for k, _ := range event.Sheets {
+		log.Println(event.Price, event.ID, k)
+		err := db.QueryRow("select count(*) as remains, ? + s.price as price from reservations r join sheets s on r.sheet_id = s.id where r.event_id = ? and s.`rank` = ? and canceled_at is null", event.Price, event.ID, k).Scan(&event.Sheets[k].Remains, &event.Sheets[k].Price)
+		event.Sheets[k].Remains = event.Sheets[k].Total - event.Sheets[k].Remains
+		log.Println(event.Sheets[k].Total, event.Sheets[k].Remains)
+		if err != nil {
+			event.Sheets[k].Price = event.Price + sheets_map[k].Price
+			event.Sheets[k].Remains = 0
+			log.Println(event.Sheets[k].Price, event.Sheets[k].Remains)
+			log.Println("getEvent_without_detail error")
+		}
+	}
+	return event, nil
+}
+
 func sanitizeEvent(e *Event) *Event {
 	sanitized := *e
 	sanitized.Price = 0
@@ -309,6 +379,36 @@ func (r *Renderer) Render(w io.Writer, name string, data interface{}, c echo.Con
 
 var db *sql.DB
 
+func getSheets() (sheets_map map[string]*Sheets, err error) {
+	sheets_map = map[string]*Sheets{
+		"ALL": &Sheets{Total: 0},
+		"S": &Sheets{Total: 0},
+		"A": &Sheets{Total: 0},
+		"B": &Sheets{Total: 0},
+		"C": &Sheets{Total: 0},
+	}
+
+	rows, err := db.Query("SELECT * FROM sheets ORDER BY `rank`, num")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var sheet Sheet
+		if err := rows.Scan(&sheet.ID, &sheet.Rank, &sheet.Num, &sheet.Price); err != nil {
+			return nil, err
+		}
+		sheets_map["ALL"].Total++
+		sheets_map[sheet.Rank].Total++
+		sheets_map[sheet.Rank].Price = sheet.Price
+		sheets_map["ALL"].Detail = append(sheets_map["ALL"].Detail, &sheet)
+		sheets_map[sheet.Rank].Detail = append(sheets_map[sheet.Rank].Detail, &sheet)
+	}
+	log.Println(sheets_map["ALL"].Total)
+	return
+}
+
+
 func main() {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&charset=utf8mb4",
 		os.Getenv("DB_USER"), os.Getenv("DB_PASS"),
@@ -318,6 +418,12 @@ func main() {
 
 	var err error
 	db, err = sql.Open("mysql", dsn)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	var sheets_map map[string]*Sheets
+	sheets_map, err = getSheets()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -695,7 +801,7 @@ func main() {
 		administrator := c.Get("administrator")
 		if administrator != nil {
 			var err error
-			if events, err = getEvents(true); err != nil {
+			if events, err = getEvents_without_detail(true, sheets_map); err != nil {
 				return err
 			}
 		}
