@@ -294,7 +294,7 @@ func getEvents_without_detail(all bool, sheets_map map[string]*Sheets) ([]*Event
 		events = append(events, &event)
 	}
 	for i, v := range events {
-		event, err := getEvent_without_detail(v, -1, sheets_map)
+		event, err := _getEvents_without_detail(v, -1, sheets_map)
 		if err != nil {
 			return nil, err
 		}
@@ -302,7 +302,24 @@ func getEvents_without_detail(all bool, sheets_map map[string]*Sheets) ([]*Event
 	}
 	return events, nil
 }
-func getEvent_without_detail(event *Event, loginUserID int64, sheets_map map[string]*Sheets) (*Event, error) {
+
+func getEvent_without_detail(eventID int64, loginUserID int64, sheets_map map[string]*Sheets) (*Event, error) {
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Commit()
+
+	var event Event
+	err = tx.QueryRow("SELECT * FROM events WHERE id = ?", eventID).Scan(&event.ID, &event.Title, &event.PublicFg, &event.ClosedFg, &event.Price)
+	if err != nil {
+		return nil, err
+	}
+
+	event.Total = sheets_map["ALL"].Total
+	return _getEvents_without_detail(&event, loginUserID, sheets_map)
+}
+func _getEvents_without_detail(event *Event, loginUserID int64, sheets_map map[string]*Sheets) (*Event, error) {
 	event.Sheets = map[string]*Sheets{
 		"S": &Sheets{Total: sheets_map["S"].Total},
 		"A": &Sheets{Total: sheets_map["A"].Total},
@@ -548,11 +565,22 @@ func main() {
 		}
 
 		var totalPrice int
-		if err := db.QueryRow("SELECT IFNULL(SUM(e.price + s.price), 0) FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id INNER JOIN events e ON e.id = r.event_id WHERE r.user_id = ? AND r.canceled_at IS NULL", user.ID).Scan(&totalPrice); err != nil {
+		if err := db.QueryRow(
+			`SELECT IFNULL(SUM(e.price + s.price), 0) 
+			FROM reservations r 
+			INNER JOIN sheets s ON s.id = r.sheet_id 
+			INNER JOIN events e ON e.id = r.event_id 
+			WHERE r.user_id = ? AND r.canceled_at IS NULL`, user.ID).Scan(&totalPrice); err != nil {
 			return err
 		}
 
-		rows, err = db.Query("SELECT event_id FROM reservations WHERE user_id = ? GROUP BY event_id ORDER BY MAX(IFNULL(canceled_at, reserved_at)) DESC LIMIT 5", user.ID)
+		rows, err = db.Query(
+			`SELECT event_id 
+			FROM reservations 
+			WHERE user_id = ? 
+			GROUP BY event_id
+			ORDER BY MAX(IFNULL(canceled_at, reserved_at)) DESC 
+			LIMIT 5`, user.ID)
 		if err != nil {
 			return err
 		}
@@ -564,7 +592,9 @@ func main() {
 			if err := rows.Scan(&eventID); err != nil {
 				return err
 			}
-			event, err := getEvent(eventID, -1)
+
+			event, err := getEvent_without_detail(eventID, -1, sheets_map)
+			//event, err := getEvent(eventID, -1)
 			if err != nil {
 				return err
 			}
