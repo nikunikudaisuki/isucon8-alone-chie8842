@@ -184,6 +184,7 @@ func getLoginAdministrator(c echo.Context) (*Administrator, error) {
 	return &administrator, err
 }
 
+/*
 func getEvents(all bool) ([]*Event, error) {
 	tx, err := db.Begin()
 	if err != nil {
@@ -209,7 +210,7 @@ func getEvents(all bool) ([]*Event, error) {
 		events = append(events, &event)
 	}
 	for i, v := range events {
-		event, err := getEvent(v.ID, -1)
+		event, err := getEvent(v.ID, -1, sheets_map, original_sheets)
 		if err != nil {
 			return nil, err
 		}
@@ -220,51 +221,63 @@ func getEvents(all bool) ([]*Event, error) {
 	}
 	return events, nil
 }
+*/
 
-
-func getEvent(eventID, loginUserID int64) (*Event, error) {
+func getEvent(eventID, loginUserID int64, sheets_map map[string]*Sheets, original_sheets map[int]*Sheet) (*Event, error) {
+	log.Println("ccc------")
 	var event Event
 	if err := db.QueryRow("SELECT * FROM events WHERE id = ?", eventID).Scan(&event.ID, &event.Title, &event.PublicFg, &event.ClosedFg, &event.Price); err != nil {
 		return nil, err
 	}
+
+	log.Println("ddd------")
 	event.Sheets = map[string]*Sheets{
-		"S": &Sheets{},
-		"A": &Sheets{},
-		"B": &Sheets{},
-		"C": &Sheets{},
+		"S": &Sheets{Total: sheets_map["S"].Total},
+		"A": &Sheets{Total: sheets_map["A"].Total},
+		"B": &Sheets{Total: sheets_map["B"].Total},
+		"C": &Sheets{Total: sheets_map["C"].Total},
 	}
 
-	rows, err := db.Query("SELECT * FROM sheets ORDER BY `rank`, num")
+	log.Println("eee------")
+	err := db.QueryRow("select count(*) from reservations where event_id = ? and canceled_at is null", event.ID).Scan(&event.Remains)
+	event.Remains = event.Total - event.Remains
 	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
+		return nil, err }
 
+	log.Println("fff------")
+	rows, err := db.Query(
+		`
+			select id, sheet_id, user_id, reserved_at, canceled_at
+			reservations where event_id = ? and canceled_at is null
+		`, event.ID)
+	if err != nil {
+		log.Println("zzz------");
+		for k, _ := range event.Sheets {
+			log.Println(k)
+			log.Println(sheets_map[k].Detail)
+			event.Sheets[k].Detail = sheets_map[k].Detail
+		}
+		return &event, nil
+	}
+	var reservation Reservation
+	var sheet Sheet
+
+	log.Println("ggg------")
 	for rows.Next() {
-		var sheet Sheet
-		if err := rows.Scan(&sheet.ID, &sheet.Rank, &sheet.Num, &sheet.Price); err != nil {
-			return nil, err
-		}
-		event.Sheets[sheet.Rank].Price = event.Price + sheet.Price
-		event.Total++
-		event.Sheets[sheet.Rank].Total++
-
-		var reservation Reservation
-		err := db.QueryRow("SELECT * FROM reservations WHERE event_id = ? AND sheet_id = ? AND canceled_at IS NULL GROUP BY event_id, sheet_id", event.ID, sheet.ID).Scan(&reservation.ID, &reservation.EventID, &reservation.SheetID, &reservation.UserID, &reservation.ReservedAt, &reservation.CanceledAt)
-		if err == nil {
-			sheet.Mine = reservation.UserID == loginUserID
-			sheet.Reserved = true
-			sheet.ReservedAtUnix = reservation.ReservedAt.Unix()
-		} else if err == sql.ErrNoRows {
-			event.Remains++
-			event.Sheets[sheet.Rank].Remains++
-		} else {
-			return nil, err
-		}
-
+		err := rows.Scan(&reservation.ID, &reservation.SheetID, &reservation.UserID, &reservation.ReservedAt, &reservation.CanceledAt)
+	  log.Println("hhh------")
+		if err != nil { return nil, err }
+	  log.Println(reservation.SheetID)
+	  log.Println(original_sheets[int(reservation.SheetID)])
+		sheet = *original_sheets[int(reservation.SheetID)]
+		sheet.Mine = reservation.UserID == loginUserID
+		sheet.Reserved = true
+		sheet.ReservedAtUnix = reservation.ReservedAt.Unix()
 		event.Sheets[sheet.Rank].Detail = append(event.Sheets[sheet.Rank].Detail, &sheet)
+		log.Println("iii------")
 	}
-
+	if err != nil { return nil, err }
+	defer rows.Close()
 	return &event, nil
 }
 
@@ -385,7 +398,7 @@ func (r *Renderer) Render(w io.Writer, name string, data interface{}, c echo.Con
 
 var db *sql.DB
 
-func getSheets() (sheets_map map[string]*Sheets, err error) {
+func getSheets() (sheets_map map[string]*Sheets, original_sheets map[int]*Sheet, err error) {
 	sheets_map = map[string]*Sheets{
 		"ALL": &Sheets{Total: 0},
 		"S": &Sheets{Total: 0},
@@ -393,24 +406,25 @@ func getSheets() (sheets_map map[string]*Sheets, err error) {
 		"B": &Sheets{Total: 0},
 		"C": &Sheets{Total: 0},
 	}
+	original_sheets = map[int]*Sheet{}
 
 	rows, err := db.Query("SELECT * FROM sheets ORDER BY `rank`, num")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var sheet Sheet
 		if err := rows.Scan(&sheet.ID, &sheet.Rank, &sheet.Num, &sheet.Price); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
+		original_sheets[int(sheet.ID)] = &sheet
 		sheets_map["ALL"].Total++
 		sheets_map[sheet.Rank].Total++
 		sheets_map[sheet.Rank].Price = sheet.Price
 		sheets_map["ALL"].Detail = append(sheets_map["ALL"].Detail, &sheet)
 		sheets_map[sheet.Rank].Detail = append(sheets_map[sheet.Rank].Detail, &sheet)
 	}
-	log.Println(sheets_map["ALL"].Total)
 	return
 }
 
@@ -429,10 +443,12 @@ func main() {
 	}
 
 	var sheets_map map[string]*Sheets
-	sheets_map, err = getSheets()
+	var original_sheets map[int]*Sheet
+	sheets_map, original_sheets, err = getSheets()
 	if err != nil {
 		log.Fatal(err)
 	}
+	log.Println(*original_sheets[1])
 
 	e := echo.New()
 	funcs := template.FuncMap{
@@ -541,7 +557,7 @@ func main() {
 				return err
 			}
 
-			event, err := getEvent(reservation.EventID, -1)
+			event, err := getEvent(reservation.EventID, -1, sheets_map, original_sheets)
 			if err != nil {
 				return err
 			}
@@ -670,7 +686,7 @@ func main() {
 			loginUserID = user.ID
 		}
 
-		event, err := getEvent(eventID, loginUserID)
+		event, err := getEvent(eventID, loginUserID, sheets_map, original_sheets)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				return resError(c, "not_found", 404)
@@ -695,8 +711,9 @@ func main() {
 		if err != nil {
 			return err
 		}
-
-		event, err := getEvent(eventID, user.ID)
+		log.Println("aaa---------------aaa")
+		event, err := getEvent(eventID, user.ID, sheets_map, original_sheets)
+		log.Println("bbb---------------aaa")
 		if err != nil {
 			if err == sql.ErrNoRows {
 				return resError(c, "invalid_event", 404)
@@ -713,7 +730,14 @@ func main() {
 		var sheet Sheet
 		var reservationID int64
 		for {
-			if err := db.QueryRow("SELECT * FROM sheets WHERE id NOT IN (SELECT sheet_id FROM reservations WHERE event_id = ? AND canceled_at IS NULL FOR UPDATE) AND `rank` = ? ORDER BY RAND() LIMIT 1", event.ID, params.Rank).Scan(&sheet.ID, &sheet.Rank, &sheet.Num, &sheet.Price); err != nil {
+			if err := db.QueryRow(
+				"SELECT * " + 
+				"FROM sheets " +
+				"WHERE id NOT IN ( " +
+					"SELECT sheet_id " +
+					"FROM reservations WHERE event_id = ? AND canceled_at IS NULL FOR UPDATE) " +
+				"AND `rank` = ? " +
+				"ORDER BY RAND() LIMIT 1", event.ID, params.Rank).Scan(&sheet.ID, &sheet.Rank, &sheet.Num, &sheet.Price); err != nil {
 				if err == sql.ErrNoRows {
 					return resError(c, "sold_out", 409)
 				}
@@ -764,7 +788,7 @@ func main() {
 			return err
 		}
 
-		event, err := getEvent(eventID, user.ID)
+		event, err := getEvent(eventID, user.ID, sheets_map, original_sheets)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				return resError(c, "invalid_event", 404)
@@ -898,7 +922,7 @@ func main() {
 			return err
 		}
 
-		event, err := getEvent(eventID, -1)
+		event, err := getEvent(eventID, -1, sheets_map, original_sheets)
 		if err != nil {
 			return err
 		}
@@ -909,7 +933,7 @@ func main() {
 		if err != nil {
 			return resError(c, "not_found", 404)
 		}
-		event, err := getEvent(eventID, -1)
+		event, err := getEvent(eventID, -1, sheets_map, original_sheets)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				return resError(c, "not_found", 404)
@@ -933,7 +957,7 @@ func main() {
 			params.Public = false
 		}
 
-		event, err := getEvent(eventID, -1)
+		event, err := getEvent(eventID, -1, sheets_map, original_sheets)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				return resError(c, "not_found", 404)
@@ -959,7 +983,7 @@ func main() {
 			return err
 		}
 
-		e, err := getEvent(eventID, -1)
+		e, err := getEvent(eventID, -1, sheets_map, original_sheets)
 		if err != nil {
 			return err
 		}
@@ -972,7 +996,7 @@ func main() {
 			return resError(c, "not_found", 404)
 		}
 
-		event, err := getEvent(eventID, -1)
+		event, err := getEvent(eventID, -1, sheets_map, original_sheets)
 		if err != nil {
 			return err
 		}
